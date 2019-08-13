@@ -1,0 +1,239 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+EPA Water Quality Analysis
+================
+
+# Data Cleaning
+
+This section outlines the process needed for cleaning data taken from EPA.gov.
+
+There are two datasets:
+
+  - [Water
+    Chemistry](https://www.epa.gov/sites/production/files/2014-10/nla2007_chemical_conditionestimates_20091123.csv)
+  - [Sample Site
+    Information](https://www.epa.gov/sites/production/files/2014-10/nla2007_chemical_conditionestimates_20091123.csv)
+
+The first dataset contains data pertaining to water quality samples at a given site. 
+
+The second data set contains information relating to that
+site such as latitude and longitude data. 
+
+
+We will need to combine these datasets.
+
+In order to join any two datasets there must be a common field(s). 
+
+This case it is the `site_id`.
+
+The below code chunk:
+
+1.  Load the `tidyverse`
+2.  Creates variables that store the URL of the csv files
+3.  Read the datasets and standardizes the column names using th `clean_names()` function from janitor.
+
+<!-- end list -->
+
+
+```{r}
+library(tidyverse)
+
+# identify water quality csv
+water_url <- "https://www.epa.gov/sites/production/files/2014-10/nla2007_chemical_conditionestimates_20091123.csv"
+
+# site info csv (w lat lon data)
+site_url <- "https://www.epa.gov/sites/production/files/2014-01/nla2007_sampledlakeinformation_20091113.csv"
+
+# read sites
+sites <- read_csv(site_url) %>% 
+  janitor::clean_names()
+
+# read water
+water_q <- read_csv(water_url) %>% 
+  janitor::clean_names()
+```
+
+
+Now that we have these datasets we will need to join them together.
+
+In this case we will join three tables together:
+
+  - Water Quality dataset
+  - Site location data
+  - State abbreviation and region data
+
+We first take only a few columns of interest from the `sites` dataset.
+
+This is then piped ( %\>% ) into an `inner_join()` (all columns from x and y where there is a match between x and y).
+
+The resultant table is then passed forward into a `left_join()` (all columns from x and y where
+returning all rows from x). In this join the y table is explicitly created from the built in R objects `state.abb` and `state.region`.
+
+
+Then, a `select()` statement is used to change some column names, select only the columns of interest. Finally, the tibble is written to the `data` directory (run `mkdir("data")`) if the directory does not exist.
+
+```{r}
+# join together
+# join together
+clean <- select(sites, lon_dd, lat_dd, lakename, site_id, state_name, st) %>% 
+  inner_join(water_q, by = "site_id") %>% 
+  # join a table that has region info
+  left_join(
+    tibble(st = state.abb,
+           region = state.region), by = c("st.y" = "st")
+  ) %>% 
+  # select only data of interest
+  select(contains("_cond"), ptl, ntl, chla, st = st.x, region,
+         lon_dd = lon_dd.x, lat_dd = lat_dd.x, lakename)
+
+
+#write_csv(clean, "data/water_quality.csv") 
+```
+
+# Exploratory analysis
+
+```{r}
+water <- read_csv("~/EPA-2019-Shiny-Rmd-Research-Workshop/epa-water-quality-master/epa-water-quality-master/data/water_quality.csv")
+```
+
+```{r}
+glimpse(water)
+```
+
+Use ggplot2 to explore the relationship between numeric variables.
+
+```{r}
+water %>% 
+  ggplot(aes(ptl, ntl)) +
+  geom_point(alpha = .25) +
+  theme_minimal()
+```
+
+Notice the fanning nature of the chart,this alludes to a log normal
+distribution. Apply log transformations on both axes via
+`scale_x/y_log10()`.
+
+
+```{r}
+water %>% 
+  ggplot(aes(ptl, ntl)) +
+  geom_point(alpha = .25) +
+  theme_minimal() + 
+  scale_x_log10() +
+  scale_y_log10()
+```
+
+Stop Here...
+
+Wonderful\! Now there is a clear linear trend. Try applying a linear
+regression to the data using `geom_smooth()`
+
+
+```{r}
+water %>% 
+  ggplot(aes(ptl, ntl)) +
+  geom_point(alpha = .25) +
+  theme_minimal() + 
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_smooth(method = "lm")
+```
+
+
+This is great\! What are the values of our coefficient though? Fit a
+model.
+
+```{r}
+mod <- lm(log10(ntl) ~ log10(ptl), data = water)
+
+summary(mod)
+```
+
+How does this change for a single region? We can filter the
+data.
+
+```{r}
+mod_west <- lm(log10(ntl) ~ log10(ptl), data = filter(water, region == "West"))
+summary(mod_west)
+```
+
+There is some variation in this. What about all other regions? We can
+use `purrr` to create multiple models.
+
+
+```{r}
+region_mods <- water %>% 
+  nest(-region) %>% 
+  mutate(mod = map(.x = data, .f = ~lm(log10(.x$ntl) ~ log10(.x$ptl))),
+         # create a nested tibble for model coefs
+         results = map(mod, broom::tidy),
+         # create nested tibble for model metrics
+         summary = map(mod, broom::glance))
+```
+
+We can unnest different tibbles. For the coefficients unnest the
+`results`.
+
+```{r}
+unnest(region_mods, results)
+```
+
+
+## Mapping data
+
+To map data we can take advantage of `leaflet` and `sf`. We will create
+a simple feature object which has a column containing geometry
+information. We use `st_as_sf()` to convert to a spatial object. Use the
+argument `coords` to tell which columns correspond to latitude and
+logitude.
+
+```{r}
+library(sf)
+```
+
+
+```{r}
+water_sf <- water %>% 
+  st_as_sf(coords = c("lon_dd", "lat_dd"))
+
+class(water_sf)
+```
+
+
+You can see now that this is still a data frame but is also of class
+`sf`.
+
+We can use this sf object to plot some markers with leaflet.
+
+
+```{r}
+library(leaflet)
+
+leaflet(water_sf) %>% 
+        addTiles() %>% 
+        addMarkers()
+```
+
+
+This creates markers for each measurement, but it would be nice to have
+a popup message associated with each one. We can create a message with
+`mutate()` and `glue()`. Note that the `<br>` tag is an html tag that
+creates a new line.
+
+
+```{r}
+water_sf %>% 
+  mutate(msg = glue::glue({
+    "Name: {lakename}<br>
+    Chlorphylla: {chla}<br>
+    Nitrogen: {ntl}<br>
+    Phosphorus: {ptl}<br>"})) %>% 
+  leaflet() %>% 
+  addTiles() %>% 
+  addMarkers(popup = ~msg)
+```
+
+

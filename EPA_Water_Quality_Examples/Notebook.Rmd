@@ -1,0 +1,79 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+data from the 2007 National Lakes Assessment
+
+Packages
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(plotly)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+Get Data: The data we need is available from the National Aquatic Resource
+Survey's website First we can get the dataset that we have saved as a `.csv`
+in this repository.
+
+```{r}
+nla_wq_all <- read_csv("https://www.epa.gov/sites/production/files/2014-10/nla2007_chemical_conditionestimates_20091123.csv")
+```
+
+Manipulate Data: 
+
+Let's tidy up this dataset by turning all column names to lower case (Jeff likes it that way), convert all text in the dataset to lower case (again Jeff likes it like that way and it is kind of a hot mess otherwise), filter out just the probability samples and the first visits, and select a subset of columns.
+
+
+```{r}
+nla_wq <- nla_wq_all %>%
+  rename_all(tolower) %>% #making all names lower case beucase they are a mess!
+  mutate_if(is.character, tolower) %>%
+  filter(site_type == "prob_lake",
+         visit_no == 1) %>%
+  select(site_id, st, epa_reg, wsa_eco9, ptl, ntl, turb, chla, doc)
+
+nla_wq
+```
+
+Visualize Data: 
+
+```{r}
+hist(nla_wq$ntl)
+```
+
+```{r}
+nla_tn_tp_chla_gg <- nla_wq %>% ggplot(aes(x=ntl,y=ptl)) + 
+            geom_smooth(method = "gam",se = TRUE) +
+            geom_point(size=4, color="tomato") 
+
+nla_tn_tp_chla_gg
+```
+
+Next step is to visualize the data.  Let's look at the association between total nitrogen, total phosphorus, and chlorophyll.
+
+
+
+```{r}
+nla_tn_tp_chla_gg <- nla_wq %>%
+  ggplot(aes(x=ntl,y=ptl)) +
+  geom_point(aes(group = st, size=chla, color=chla)) +
+  scale_x_log10() +
+  scale_y_log10() +
+  scale_color_continuous(low = "springgreen", high = "darkgreen") +
+  geom_smooth(method = "lm", color = "grey50") +
+  theme_classic() +
+  labs(title = "Total Nitrogen, Total Phosphorus, and Chlorophyll Associations",
+       x = "Log 10 (Total Nitrogen)",
+       y = "Log 10 (Total Phosphorus)")
+  
+ggplotly(nla_tn_tp_chla_gg)
+```
+
+
+
+
