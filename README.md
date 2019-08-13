@@ -1,12 +1,12 @@
-# Intro-Shiny-RMD-Research-Drug-Development at PharmaSUG Philadelphia by Phil Bowsher on June 16, 2019
+# Intro-Shiny-RMD-Research at EPA by Phil Bowsher on August 12, 2019
 
 Live Presentation is here:
 
-https://colorado.rstudio.com/rsc/content/2519/#1
+https://colorado.rstudio.com/rsc/content/2760/
 
 Info:
 
-https://www.pharmasug.org/us/2019/training.html#sem34
+https://github.com/USEPA/epa_r_workshop_2019
 
 Other apps and reports are here:
 
